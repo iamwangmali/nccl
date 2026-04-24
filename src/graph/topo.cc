@@ -733,7 +733,7 @@ ncclResult_t ncclTopoAddPciLinks(struct ncclXmlNode* node, struct ncclTopoSystem
     int64_t busId;
     NCCLCHECK(busIdToInt64(target, &busId));
     NCCLCHECK(ncclTopoGetNode(system, &remote, PCI, NCCL_TOPO_ID(systemId, busId)));
-    if (remote) NCCLCHECK(ncclTopoConnectNodes(pci, remote, LINK_LOC, LOC_BW));
+    if (remote) NCCLCHECK(ncclTopoConnectNodes(pci, remote, LINK_PCI, 16*240/80.0));
   } else {
     if (strcmp(node->name, "cpu") == 0) {
       NCCLCHECK(ncclGetSystemId(system, node, &systemId));

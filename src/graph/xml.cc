@@ -429,8 +429,8 @@ static ncclResult_t getPciPath(const char* busId, char** path) {
 static ncclResult_t getBcmLinks(const char* busId, int* nlinks, char** peers) {
   *nlinks = 0;
   *peers = NULL;
-  char dirPath[] = "/sys/kernel/pci_switch_link/virtual_switch_links/0000:00:00.0";
-  memcpylower(dirPath+sizeof("/sys/kernel/pci_switch_link/virtual_switch_links/")-1, busId, BUSID_SIZE-1);
+  char dirPath[] = "/tmp/sd-crosslink/0000:00:00.0";
+  memcpylower(dirPath+sizeof("/tmp/sd-crosslink/")-1, busId, BUSID_SIZE-1);
   DIR *dir = opendir(dirPath);
   if (dir) {
     struct dirent* file;
@@ -638,7 +638,7 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* 
   }
 
   NCCLCHECKGOTO(xmlGetAttr(pciNode, "vendor", &vendor), ret, exit);
-  if (vendor != NULL && strcmp(vendor, "0x1000") == 0) { // BCM switch, look for P2P connections
+  if (vendor != NULL && strcmp(vendor, "0x205e") == 0) { // BCM switch, look for P2P connections
     int nlinks;
     NCCLCHECKGOTO(getBcmLinks(busId, &nlinks, &peers), ret, exit);
     for (int l=0; l<nlinks; l++) {
