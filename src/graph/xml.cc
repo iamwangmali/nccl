@@ -426,11 +426,29 @@ static ncclResult_t getPciPath(const char* busId, char** path) {
   return ncclSuccess;
 }
 
-static ncclResult_t getBcmLinks(const char* busId, int* nlinks, char** peers) {
+#define PCI_BRIDGE_CLASS "0x060400"
+
+#define BCM_BRIDGE_VENDOR  "0x1000"
+#define SUDO_BRIDGE_VENDOR "0x205e"
+
+struct ncclIntraPcilinkInfo{
+  const char *vendor;
+  const char *path;
+  float bw;
+};
+
+static struct ncclIntraPcilinkInfo ncclIntranodePcilink[] = {
+  {BCM_BRIDGE_VENDOR, "/sys/kernel/pci_switch_link/virtual_switch_links/", 5000.0},
+  {SUDO_BRIDGE_VENDOR, "/tmp/pci-crosslink/", 16*240/80.0}
+};
+#define ARRAYSIZE(array) (sizeof((array))/sizeof((array)[0]))
+
+static ncclResult_t getPciLinkPeers(const char* busId, const char* path, int* nlinks, char** peers) {
   *nlinks = 0;
   *peers = NULL;
-  char dirPath[] = "/tmp/sd-crosslink/0000:00:00.0";
-  memcpylower(dirPath+sizeof("/tmp/sd-crosslink/")-1, busId, BUSID_SIZE-1);
+  char dirPath[128];
+  sprintf(dirPath, "%s0000:00:00.0", path);
+  memcpylower(dirPath+strlen(path), busId, BUSID_SIZE-1);
   DIR *dir = opendir(dirPath);
   if (dir) {
     struct dirent* file;
@@ -580,6 +598,7 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* 
   char* path = NULL;
   char* peers = NULL;
   const char* vendor = NULL;
+  const char* nodeClass = NULL;
   struct ncclXmlNode* parent = NULL;
   int index;
 
@@ -637,21 +656,30 @@ ncclResult_t ncclTopoGetXmlFromSys(struct ncclXmlNode* pciNode, struct ncclXml* 
     }
   }
 
-  NCCLCHECKGOTO(xmlGetAttr(pciNode, "vendor", &vendor), ret, exit);
-  if (vendor != NULL && strcmp(vendor, "0x205e") == 0) { // BCM switch, look for P2P connections
-    int nlinks;
-    NCCLCHECKGOTO(getBcmLinks(busId, &nlinks, &peers), ret, exit);
-    for (int l=0; l<nlinks; l++) {
-      char* target = peers+l*BUSID_SIZE;
-      struct ncclXmlNode* linkNode;
-      NCCLCHECKGOTO(xmlGetSubKv(pciNode, "pcilink", &linkNode, "target", target), ret, exit);
-      if (linkNode == NULL) {
-        NCCLCHECKGOTO(xmlAddNode(xml, pciNode, "pcilink", &linkNode), ret, exit);
-        NCCLCHECKGOTO(xmlSetAttr(linkNode, "target", target), ret, exit);
+  NCCLCHECKGOTO(xmlGetAttr(pciNode, "class", &nodeClass), ret, exit);
+  if (nodeClass != NULL && strcmp(nodeClass, PCI_BRIDGE_CLASS) == 0){
+    NCCLCHECKGOTO(xmlGetAttr(pciNode, "vendor", &vendor), ret, exit);
+    if (vendor != NULL){
+      int nlinks=0, i;
+      for(i=0; i<ARRAYSIZE(ncclIntranodePcilink); i++){
+        if(strcmp(vendor, ncclIntranodePcilink[i].vendor) == 0){
+          NCCLCHECKGOTO(getPciLinkPeers(busId, ncclIntranodePcilink[i].path, &nlinks, &peers), ret, exit);
+          break;
+        }
       }
+      for (int l=0; l<nlinks; l++) {
+        char* target = peers+l*BUSID_SIZE;
+        struct ncclXmlNode* linkNode;
+        NCCLCHECKGOTO(xmlGetSubKv(pciNode, "pcilink", &linkNode, "target", target), ret, exit);
+        if (linkNode == NULL) {
+          NCCLCHECKGOTO(xmlAddNode(xml, pciNode, "pcilink", &linkNode), ret, exit);
+          NCCLCHECKGOTO(xmlSetAttr(linkNode, "target", target), ret, exit);
+          NCCLCHECKGOTO(xmlSetAttrFloat(linkNode, "linkbw", ncclIntranodePcilink[i].bw), ret, exit);
+        }
+      }
+      free(peers);
+      peers = NULL;
     }
-    free(peers);
-    peers = NULL;
   }
 
   parent = pciNode->parent;
