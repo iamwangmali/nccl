@@ -729,11 +729,20 @@ ncclResult_t ncclTopoAddPciLinks(struct ncclXmlNode* node, struct ncclTopoSystem
     }
     struct ncclTopoNode* remote = NULL;
     const char* target;
+    float linkBw;
     NCCLCHECK(xmlGetAttrStr(node, "target", &target));
+    NCCLCHECK(xmlGetAttrFloat(node, "linkbw", &linkBw));
     int64_t busId;
     NCCLCHECK(busIdToInt64(target, &busId));
     NCCLCHECK(ncclTopoGetNode(system, &remote, PCI, NCCL_TOPO_ID(systemId, busId)));
-    if (remote) NCCLCHECK(ncclTopoConnectNodes(pci, remote, LINK_LOC, LOC_BW));
+    if (remote) {
+      if(linkBw == LOC_BW) {
+        NCCLCHECK(ncclTopoConnectNodes(pci, remote, LINK_LOC, linkBw));
+      }
+      else {
+        NCCLCHECK(ncclTopoConnectNodes(pci, remote, LINK_PCI, linkBw));
+      }
+    }
   } else {
     if (strcmp(node->name, "cpu") == 0) {
       NCCLCHECK(ncclGetSystemId(system, node, &systemId));
